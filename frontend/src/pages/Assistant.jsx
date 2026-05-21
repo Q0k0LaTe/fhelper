@@ -29,7 +29,22 @@ export default function Assistant({ goTo }) {
   const taRef = useRef(null)
 
   useEffect(() => {
-    api.chat.status().then(setConfig).catch(() => setConfig({ configured: false }))
+    let cancelled = false
+    // 状态查询带重试：Render 免费实例冷启动时首个请求可能 404/超时，
+    // 不能据此误判“未配置”——只有后端明确返回 configured:false 才提示。
+    async function check(triesLeft) {
+      try {
+        const s = await api.chat.status()
+        if (!cancelled) setConfig(s)
+      } catch {
+        // 拿不到状态时保持 config=null（不显示横幅），并隔几秒重试
+        if (triesLeft > 0 && !cancelled) setTimeout(() => check(triesLeft - 1), 2500)
+      }
+    }
+    check(3)
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // 新消息 / 思考中 时滚到底部
